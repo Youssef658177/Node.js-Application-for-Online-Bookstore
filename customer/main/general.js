@@ -1,224 +1,91 @@
-// general users endpoints
 const express = require('express');
-let books = require("../data/books_data.js");
-let isValid = require("./customer_routes.js").isValid;
-let users = require("./customer_routes.js").users;
-const axios = require('axios');
-
+let books = require("./booksdb.js");
+let isValid = require("./auth_users.js").isValid;
+let users = require("./auth_users.js").users;
 const public_users = express.Router();
 
-// helper function for `/author/:author & /title/:title`
-const findBookByProperty = (object, property, propertyValue) => { // obtains the book and the key that holds the book (isbn)
-  for (const key in object) {
-    if(object.hasOwnProperty(key)) {
-      let book = object[key];
-
-      if (book[property] && book[property] === propertyValue) {
-        return { // returning an object
-          isbn: key,
-          book: book
-        };
-      }
+const doesExist = (username)=>{
+    let userswithsamename = users.filter((user)=>{
+      return user.username === username
+    });
+    if(userswithsamename.length > 0){
+      return true;
+    } else {
+      return false;
     }
   }
   
-  return null; // if not book found
-}
-
-public_users.post('/register', (req, res) => {
-  const username = req.body.username;
-  const password = req.body.password;
-
-  if (username && password) {
-
-    if (!isValid(username)) {
-      users.push({ "username": username, "password": password });   // adding new user to `users db`
-      return res.status(200).json({ message: `User successfully registered. Now you can Log in.`});
-    } else {
-
-      res.status(400).json({ message: `User already exists. Please try again.` });
-    }
-
-  } else {
-    res.status(400).json({ messsage: `Unable to register user. Please try again.`});
-  }
-});
-
-const getAllBooks = (books) => {  // for '/' endpoint.
-  return new Promise((resolve, reject) => {
-    let allBooks = books;
-    setTimeout(() => {
-      if (allBooks) {
-        console.log(`Books database fetched`);
-        resolve(allBooks);
+public_users.post("/register", (req, res) => {
+    const username = req.query.username;
+    const password = req.query.password;
+  
+    if (username && password) {
+      if (!doesExist(username)) { 
+        users.push({"username":username,"password":password});
+        return res.status(200).json({message: "User successfully registred. Now you can login"});
       } else {
-        reject(new Error(`There are no books available at the moment`));
+        return res.status(404).json({message: "User already exists!"});    
       }
-    }, 500);
-  });
-}
-
-public_users.get('/', async (req, res) => {     // Getting all books from db. Implementing async/await with custom Promise 
-  const booksdb = books;
-
-  try {
-    const fetchedBooks = await getAllBooks(booksdb);
-
-    if (fetchedBooks) {
-      res.status(200).json(fetchedBooks);
-    } else {
-      res.status(404).json({ message: `Could not find available books.` });
-    }
-
-  } catch (err) {
-    console.error(`Error fetching data: ${err.message}.`);
-    res.status(500).json({ message: `Internal Server Error while fetching books. Please try again` });
-  }
+    } 
+    return res.status(404).json({message: "Unable to register user. Username and/or password not provided"});
 });
 
-public_users.get('/isbn/:isbn', async (req, res) => {  // Getting book details based on ISBN, and implementing async/await with Axios
-  const isbn = req.params.isbn;
-  
-  let booksUrl = `http://localhost:5000/`;
-  
-  try {
-    const response = await axios.get(booksUrl);
-    let allBooks = response.data;
-
-    let bookDetails = allBooks[isbn];
-
-    if (bookDetails) {
-      console.log(`Book successfully fetched by using ISBN ${isbn}.`);
-      res.status(200).json({
-        ISBN: isbn,
-        Author: bookDetails.author,
-        Title: bookDetails.title,
-        Reviews: bookDetails.reviews
-      });
-
-    } else {
-      res.status(404).json({ message: `Could not find book with ISBN: '${isbn}'. Please try again` });
-    }
-  } catch (err) {
-    console.error(`Error fetching data: ${err.message}`);
-    res.status(500).json({ message: `Internal Server Error while fetching book data. Please try again` });
-  }
+// Get the book list available in the shop
+public_users.get('/', function (req, res) {
+    res.send(JSON.stringify({ books }, null, 4));
 });
 
-public_users.get('/author/:author', async (req, res) => {   // Getting book details based on author, and implementing async/await with Axios
-  const author = req.params.author;
-
-  const booksUrl = `http://localhost:5000/`;
-  
-  try {
-    const response = await axios.get(booksUrl);
-    let allBooks = response.data;
-
-    let foundBook = findBookByProperty(allBooks, "author", author);
-    if (foundBook) {
-      console.log(`Book successfully fetched by using author named: ${author}`);
-      res.status(200).json({
-        ISBN: foundBook.isbn,
-        Author: foundBook.book.author,
-        Title: foundBook.book.title,
-        Reviews: foundBook.book.reviews
-      });
-
-    } else {
-      res.status(404).json({ message: `Could not find book with Author named '${author}'. Please try again` });
-    }
-  
-  } catch (err) {
-    console.log(`Error fetching data: ${err.message}.`);
-    res.status(500).json({ message: `Internal Server Error while fetching book data. Please try again` });
-  }
+// Get the user list available in the shop
+public_users.get('/users', function (req, res) {
+    res.send(JSON.stringify({ users }, null, 4));
 });
 
+// Get book details based on ISBN
+public_users.get('/isbn/:isbn', function (req, res) {
+    const isbn = req.params.isbn;
+    const book = Object.values(books).find(book => book.isbn === isbn);
 
-public_users.get('/title/:title', async (req, res) => {  // Getting all books based on title and implementing async/await with Axios
-  const title = req.params.title;
-
-  const booksUrl = `http://localhost:5000/`
-
-  try {
-    const response = await axios.get(booksUrl);
-    let allBooks = response.data;
-
-    const bookFound = findBookByProperty(allBooks, "title", title);
-    if (bookFound) {
-      console.log(`Book successfully fetched by using book title: ${title}`);
-      res.status(200).json({
-        ISBN: bookFound.isbn,
-        Author: bookFound.book.author,
-        Title: bookFound.book.title,
-        Reviews: bookFound.book.reviews
-      });
+    if (book) {
+        res.send(JSON.stringify(book, null, 4));
     } else {
-      res.status(404).json({ message: `Could not find book with title: ${title}. Please try again` });
+        res.send(`Book with ISBN ${isbn} not found.`);
     }
-  } catch (err) {
-    console.error(`Error fetching data: ${err.message}`);
-    res.status(500).json({ message: `Internal Server Error while fetching book data. Please try again` });
-  }
+}); 
+
+// Get book details based on author
+public_users.get('/author/:author', function (req, res) {
+    const author = req.params.author;
+    const book = Object.values(books).find(book => book.author === author);
+
+    if (book) {
+        res.send(JSON.stringify(book, null, 4));
+    } else {
+        res.send(`Book with author name ${author} not found.`);
+    }
 });
 
-public_users.get('/review/:isbn', (req, res) => { //  Get book review 8.
-  const isbn = req.params.isbn;
-  let book = books[isbn];
+// Get all books based on title
+public_users.get('/title/:title', function (req, res) {
+    const title = req.params.title;
+    const book = Object.values(books).find(book => book.title === title);
 
-  if (!isbn) {
-    return res.status(400).json({ message: `Invalid title. Please try again` });
-  }
+    if (book) {
+        res.send(JSON.stringify(book, null, 4));
+    } else {
+        res.send(`Book with title ${title} not found.`);
+    }
+});
 
-  if (!book) {
-    return res.status(200).json({ message: `Could not find book with ISBN: '${isbn}'.` });
-  }
-
-  res.status(200).json({
-    Book: book.title,
-    "Book Reviews": book.reviews
-  });
+//  Get book review
+public_users.get('/review/:isbn', function (req, res) {
+    const isbn = req.params.isbn;
+    const book = Object.values(books).find(book => book.isbn === isbn);
+    const review = book.reviews;
+    if (book) {
+        res.send(JSON.stringify(review, null, 4));
+    } else {
+        res.send(`Book with ISBN ${isbn} not found.`);
+    }
 });
 
 module.exports.general = public_users;
-
-
-/*  
- *  Approaches worth mentioning
- 
-  Using custom Promise to fetch by ISBN
-
-// async function for (11)
-const findBookIsbn = (isbn) => {
-  return new Promise((reject, resolve) => {
-    let book = books[isbn];
-    setTimeout(() => {  // for practice 
-      if (book) {
-        console.log(`Fetched book with ISBN: ${isbn} successfully.`);
-        resolve(book);
-      } else {
-        reject(new Error(`Could not find book with ISBN: ${isbn}. Please try again`));
-      }
-    }, 500);
-  });
-}
-
-// Get book details based on ISBN         // 5. | 11. implementing custom Promise
-public_users.get('/isbn/:isbn', async (req, res) => {
-  const isbn = req.params.isbn;
-  
-  try {
-    const bookDetails = await findBookIsbn(isbn);
-    res.status(200).json({
-      ISBN: bookDetals,
-      Author: bookDetails.author,
-      Title: bookDetails.title,
-      Reviews: bookDetails.reviews
-    });
-  } catch (err) {
-    res.status(400).json({ message: err.message });
-  }
-});
-
-
- */
